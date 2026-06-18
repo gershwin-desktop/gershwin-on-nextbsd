@@ -44,6 +44,7 @@ EXPECT=$(grep -Eo '[0-9a-f]{64}' "$WORK/nextbsd.img.zip.sha256" | head -1)
 ACTUAL=$(sha256 -q "$WORK/nextbsd.img.zip")
 [ "$EXPECT" = "$ACTUAL" ] || { echo "ERROR: sha256 mismatch ($ACTUAL != $EXPECT)" >&2; exit 1; }
 unzip -p "$WORK/nextbsd.img.zip" '*.img' > "$WORK/nextbsd.img"
+rm -f "$WORK/nextbsd.img.zip" "$WORK/nextbsd.img.zip.sha256"
 
 # ---------------------------------------------------------------------------
 # 2. Extract the rootfs from the freebsd-ufs/ROOTFS partition (GPT p3).
@@ -55,6 +56,7 @@ mount "/dev/${md}p3" /mnt
 tar -C /mnt -cf - . | tar -C "$ROOTFS" -xpf -
 umount /mnt
 mdconfig -d -u "${md#md}"
+rm -f "$WORK/nextbsd.img"          # no longer needed; free ~5G before the build
 
 # ---------------------------------------------------------------------------
 # 3. Build Gershwin into the rootfs via chroot (network for pkg + git clone).

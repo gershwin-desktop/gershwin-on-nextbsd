@@ -26,7 +26,6 @@ jobs:
               - 'build.sh'
               - 'overlays/**'
               - 'tools/**'
-              - '.github/workflows/**'
 
   build:
     name: build (NextBSD amd64)
@@ -36,6 +35,11 @@ jobs:
     timeout-minutes: 240
     steps:
       - uses: actions/checkout@v4
+
+      - name: Free up host disk (larger VM disk)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
 
       - name: Build ISO inside FreeBSD VM
         uses: vmactions/freebsd-vm@v1
@@ -167,10 +171,9 @@ jobs:
 
   release:
     name: publish continuous release
-    # Decoupled from `test` during bring-up so a green build always publishes an
-    # ISO the tests-only path can boot. Re-add `test` to needs once boot-test is solid.
-    needs: [build]
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.build.result == 'success' }}
+    # Public release is gated on boot + login + screenshot all passing.
+    needs: [build, test]
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.build.result == 'success' && needs.test.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
