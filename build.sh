@@ -202,7 +202,7 @@ LIVEEOF
 cp "$WORK/rootfs.uzip" "$ISOROOT/rootfs.uzip"
 
 echo "==> mkisoimages.sh: bootable cd9660 (BIOS + UEFI)"
-sh "$CWD/tools/mkisoimages.sh" -b "$LABEL" "$OUT/$ISO_NAME" "$ISOROOT"
+sh "$CWD/tools/freebsd/release/amd64/mkisoimages.sh" -b "$LABEL" "$OUT/$ISO_NAME" "$ISOROOT"
 ( cd "$OUT" && sha256 -q "$ISO_NAME" > "$ISO_NAME.sha256" 2>/dev/null || sha256sum "$ISO_NAME" | awk '{print $1}' > "$ISO_NAME.sha256" )
 ls -lh "$OUT/$ISO_NAME" "$OUT/$ISO_NAME.sha256"
 echo "==> DONE: $ISO_NAME"
