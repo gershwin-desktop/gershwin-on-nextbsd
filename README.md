@@ -22,17 +22,3 @@ release on every push to `main`.
 | `tests/boot-test.sh` | Boots the ISO under qemu/OVMF and asserts the `vfs.pivot` live-root pipeline. |
 | `tools/mkisoimages.sh` | Vendored FreeBSD release script used to bake the bootable cd9660. |
 | `overlays/System/Library/LaunchDaemons/` | Gershwin launchd jobs added to the image (`loginwindow`, `dshelper`, `gdomap`). |
-
-## Why a FreeBSD VM?
-
-Every image tool (`makefs`, `mkuzip`, `mdconfig`, `mkisoimages.sh`) is
-FreeBSD-only, and `vmactions` cannot boot the NextBSD image directly. So the
-build runs inside `vmactions/freebsd-vm` and chroots into the downloaded
-NextBSD rootfs — the same approach NextBSD itself uses to build its userland.
-
-## Status
-
-Early. The Gershwin build is expected to fail until NextBSD catches up; this
-repo lands the pipeline so the ISO is tracked and rebuilt as both evolve. The
-`release: "15.0"` VM and the GPT `p3` UFS-root assumption may need adjusting
-against the first CI runs.
