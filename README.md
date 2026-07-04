@@ -25,7 +25,7 @@ release on every push to `main`.
 
 | Path | Purpose |
 |---|---|
-| `build.sh` | `pkg install` NextBSD base → chroot-build Gershwin → repackage live ISO. Runs inside a FreeBSD VM. |
+| `build.sh` | `pkg install NextBSD-everything` → chroot-build Gershwin → repackage live ISO. Runs inside a FreeBSD VM. |
 | `.github/workflows/build.yml` | build → boot-test → publish continuous release. |
 | `tests/boot-test.sh` | Boots the ISO under qemu/OVMF and asserts the `vfs.pivot` live-root pipeline. |
 | `overlays/System/Library/LaunchDaemons/` | Gershwin launchd jobs added to the image (`loginwindow`, `dshelper`, `gdomap`, D-Bus system bus). |
