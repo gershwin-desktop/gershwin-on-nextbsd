@@ -265,6 +265,22 @@ rm -f "$ROOTFS/sbin/kldload" "$ROOTFS/sbin/kldunload" "$ROOTFS/sbin/kldstat" \
 echo "==> normalising ownership to root:wheel"
 chown -R 0:0 "$ROOTFS"
 
+# The blanket chown above also clobbered the live 'admin' account's home dir to
+# root:wheel. Restore admin ownership so the GUI session can write ~/.Xauthority,
+# ~/GNUstep, etc. Otherwise login AUTHENTICATES (pam login/nullok) but the session
+# can't start and X drops straight back to the greeter -- indistinguishable from a
+# login failure. nextbsd's own build ships no user account, so its blanket chown
+# is safe; ours must re-fix the home it just clobbered. Host-driven + numeric
+# (uid:gid/home read from the rootfs passwd) so it needs no chroot / devfs.
+ADMIN_IDS=$(awk -F: '$1=="admin"{print $3":"$4; exit}' "$ROOTFS/etc/passwd")
+ADMIN_HOME=$(awk -F: '$1=="admin"{print $9; exit}' "$ROOTFS/etc/passwd")
+if [ -n "$ADMIN_IDS" ] && [ -n "$ADMIN_HOME" ] && [ -d "$ROOTFS$ADMIN_HOME" ]; then
+    echo "==> restoring admin home ($ADMIN_HOME) ownership to $ADMIN_IDS"
+    chown -R "$ADMIN_IDS" "$ROOTFS$ADMIN_HOME"
+else
+    echo "    WARN: admin home not found in rootfs passwd; skipping home re-chown"
+fi
+
 # ---------------------------------------------------------------------------
 # 8-10. Repackage as a live ISO (nextbsd build.sh step 7 model, verbatim).
 # ---------------------------------------------------------------------------
