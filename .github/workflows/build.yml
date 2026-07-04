@@ -51,7 +51,7 @@ jobs:
           cpu: 4
           mem: 8192
           prepare: |
-            pkg install -y jq unzip
+            pkg install -y git
           run: |
             set -e
             export TARGET_ARCH=amd64
