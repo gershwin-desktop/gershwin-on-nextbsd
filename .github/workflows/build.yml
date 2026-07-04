@@ -143,8 +143,11 @@ jobs:
           chmod +x tests/loginwindow-test.sh
           ./tests/loginwindow-test.sh
 
-      - name: workspace-test (screenshot desktop)
-        continue-on-error: true
+      # GATING: unlike loginwindow-test (which only injects keystrokes), this
+      # verifies the RESULT — that the session actually reached the desktop — and
+      # fails the job if it didn't. That closes the "CI green while login is
+      # broken" gap: the boot-test alone only proves the greeter painted.
+      - name: workspace-test (verify desktop renders + screenshot)
         run: |
           chmod +x tests/workspace-test.sh
           ./tests/workspace-test.sh
