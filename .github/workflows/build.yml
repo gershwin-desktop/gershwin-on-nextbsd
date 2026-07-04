@@ -37,9 +37,18 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Free up host disk (larger VM disk)
+        # This build does MORE than NextBSD's own (pkg install NextBSD-everything
+        # + full src.txz extract + a from-source Gershwin/GNUstep compile), so
+        # free aggressively — mirror nextbsd-redux/nextbsd's free-disk block.
         uses: jlumbroso/free-disk-space@main
         with:
           tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: false
+          docker-images: false
+          swap-storage: false
 
       - name: Build ISO inside FreeBSD VM
         uses: vmactions/freebsd-vm@v1

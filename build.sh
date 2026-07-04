@@ -141,7 +141,37 @@ IGNORE_OSVERSION = yes;
 CONF
 
 # ---------------------------------------------------------------------------
-# 4. Build Gershwin into the rootfs via chroot (network for pkg + git clone).
+# 4. Version identity — the SAME /etc/os-release nextbsd-redux/nextbsd build.sh
+#    writes (it is NOT shipped by the package or nextbsd-overlays). Two reasons
+#    it MUST exist before the chroot build below:
+#      - Gershwin's Bootstrap.sh keys its dependency set off `. /etc/os-release`
+#        -> $ID. Without it, Bootstrap falls back to `uname -s`, which inside the
+#        chroot is the vmactions VM's FreeBSD kernel, NOT NextBSD -> it would pick
+#        Library/OSSupport/freebsd.txt and `pkg install mDNSResponder`, which
+#        collides with NextBSD's own base mDNSResponder. ID=nextbsd selects
+#        nextbsd.txt (which correctly omits it).
+#      - It brands the shipped image and gives nextbsd-version a value.
+# ---------------------------------------------------------------------------
+echo "==> version identity: /etc/os-release (ID=nextbsd) + nextbsd-version"
+cat > "$ROOTFS/etc/os-release" <<OSREL
+NAME="NextBSD"
+PRETTY_NAME="Gershwin on NextBSD ${IMG_DATE}"
+ID=nextbsd
+ID_LIKE=freebsd
+VERSION="${IMG_DATE}"
+VERSION_ID="15.1"
+HOME_URL="https://nextbsd.org"
+OSREL
+if [ ! -x "$ROOTFS/bin/nextbsd-version" ]; then
+    cat > "$ROOTFS/bin/nextbsd-version" <<NBV
+#!/bin/sh
+echo "NextBSD ${IMG_DATE}"
+NBV
+    chmod 0555 "$ROOTFS/bin/nextbsd-version"
+fi
+
+# ---------------------------------------------------------------------------
+# 5. Build Gershwin into the rootfs via chroot (network for pkg + git clone).
 #    Same flow as the other Gershwin targets; detect_platform() takes the
 #    NextBSD path because /usr/lib/system exists in the rootfs. Gershwin's
 #    Bootstrap.sh installs the X11/dbus/cairo/... build+runtime deps from the
@@ -161,7 +191,7 @@ chroot "$ROOTFS" /bin/sh -eu -c '
 [ -d "$ROOTFS/System/Library" ] || { echo "ERROR: /System was not produced" >&2; exit 1; }
 
 # ---------------------------------------------------------------------------
-# 5. Gershwin launchd overlay: loginwindow/dshelper/gdomap + the D-Bus system
+# 6. Gershwin launchd overlay: loginwindow/dshelper/gdomap + the D-Bus system
 #    bus (keep base getty as a rescue console on the other VTs).
 # ---------------------------------------------------------------------------
 echo "==> applying Gershwin launchd overlay (loginwindow alongside getty)"
@@ -197,13 +227,28 @@ chroot "$ROOTFS" /bin/sh -c '
     pw usermod admin -w none
 '
 
-# strip build scratch; normalise ownership before makefs bakes the tree in
+# strip build scratch before makefs bakes the tree in
 rm -rf "$ROOTFS/build" "$ROOTFS/private/etc/resolv.conf"
 umount "$ROOTFS/dev" || true
-chown -R 0:0 "$ROOTFS/System/Library/LaunchDaemons"
+
+# Retire the kld* user CLIs, exactly as nextbsd-redux/nextbsd build.sh does so
+# the Gershwin ISO carries the same Apple-shape base: macOS ships kextload/
+# kextstat, not kldload. Only the CLI front-ends go; the kld*(2) syscalls stay
+# and kext_tools provides the replacements. Harmless if a name is absent.
+rm -f "$ROOTFS/sbin/kldload" "$ROOTFS/sbin/kldunload" "$ROOTFS/sbin/kldstat" \
+      "$ROOTFS/sbin/kldconfig" "$ROOTFS/usr/sbin/kldxref" \
+      "$ROOTFS/usr/lib/debug/usr/sbin/kldxref.debug"
+
+# Force the ENTIRE staged tree to root:wheel before makefs records it (makefs
+# bakes in the staging tree's on-disk ownership). Mirrors nextbsd build.sh: the
+# tree is assembled by build steps whose cp/clone/mkdir can leak non-root
+# ownership into the baked image. We run as root, so setuid/setgid bits on
+# already-0:0 files are preserved. Subsumes the old narrow LaunchDaemons chown.
+echo "==> normalising ownership to root:wheel"
+chown -R 0:0 "$ROOTFS"
 
 # ---------------------------------------------------------------------------
-# 6-8. Repackage as a live ISO (nextbsd build.sh step 7 model, verbatim).
+# 7-9. Repackage as a live ISO (nextbsd build.sh step 7 model, verbatim).
 # ---------------------------------------------------------------------------
 echo "==> live ISO: compact UFS + mkuzip"
 makefs -t ffs -B little -o version=2,label=NBROOT "$WORK/rootfs.iso.ufs" "$ROOTFS"
@@ -299,7 +344,12 @@ ISOROOT="$WORK/isoroot"
 rm -rf "$ISOROOT"
 mkdir -p "$ISOROOT/boot/loader.conf.d" "$ISOROOT/etc"
 cp -R "$ROOTFS/boot/." "$ISOROOT/boot/"
-for f in cdboot loader.efi; do
+# cdboot is the BIOS El Torito boot block — amd64 only; arm64 ISOs are UEFI-only
+# (booted from loader.efi via the ESP El Torito image). Require cdboot only when
+# it exists; loader.efi is required on both (matches nextbsd build.sh).
+_isoreq="loader.efi"
+[ -f "$ISOROOT/boot/cdboot" ] && _isoreq="cdboot loader.efi"
+for f in $_isoreq; do
     [ -f "$ISOROOT/boot/$f" ] || { echo "ERROR: live ISO needs rootfs/boot/$f" >&2; exit 1; }
 done
 cp "$WORK/mfsroot.img" "$ISOROOT/boot/mfsroot.img"
