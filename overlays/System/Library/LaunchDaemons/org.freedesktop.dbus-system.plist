@@ -19,7 +19,7 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>org.freedesktop.dbus</string>
+    <string>org.freedesktop.dbus-system</string>
     <key>ProgramArguments</key>
     <array>
         <string>/usr/local/bin/dbus-daemon</string>

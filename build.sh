@@ -172,7 +172,7 @@ cp -aR "$CWD/overlays/." "$ROOTFS/"
 # machine is reachable only via SSH. Retaining getty leaves a text rescue
 # console on the other VTs. loginwindow stays the primary GUI greeter.
 
-# D-Bus system bus: the org.freedesktop.dbus LaunchDaemon (overlay) runs
+# D-Bus system bus: the org.freedesktop.dbus-system LaunchDaemon (overlay) runs
 # `dbus-daemon --system` in the foreground. It needs a machine-id (generate now
 # so every live boot has one) and the /var/run/dbus socket dir to exist; the
 # live overlay makes /var writable so the socket itself is created at runtime.
