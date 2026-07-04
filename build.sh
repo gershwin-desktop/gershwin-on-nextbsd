@@ -238,12 +238,12 @@ chroot "$ROOTFS" /bin/sh -eu -c '
 # no directory to auth against.
 chroot "$ROOTFS" /bin/sh -c '. /System/Library/Makefiles/GNUstep.sh && dscli init'
 
-# Live 'admin' account with an empty password (the greeter logs in with no password).
-echo "==> creating live 'admin' account (empty password)"
-chroot "$ROOTFS" /bin/sh -c '
-    pw useradd admin -m -G wheel -s /bin/sh -c "Gershwin Admin" 2>/dev/null || true
-    pw usermod admin -w none
-'
+# NB: create NO user account and never touch /etc/master.passwd. `dscli init`
+# above already provisioned the live 'admin' in DirectoryServices (uid/gid 5000,
+# noPassword, home /Local/Users/admin) and the greeter authenticates it via
+# dshelper/nss_gershwin. A pw(8) /etc account would be a redundant, conflicting
+# second 'admin' -- Gershwin owns the user database, so we leave it entirely to
+# dscli (which also sets the correct /Local ownership; we must not disturb it).
 
 # strip build scratch before makefs bakes the tree in
 rm -rf "$ROOTFS/build" "$ROOTFS/private/etc/resolv.conf"
@@ -257,29 +257,15 @@ rm -f "$ROOTFS/sbin/kldload" "$ROOTFS/sbin/kldunload" "$ROOTFS/sbin/kldstat" \
       "$ROOTFS/sbin/kldconfig" "$ROOTFS/usr/sbin/kldxref" \
       "$ROOTFS/usr/lib/debug/usr/sbin/kldxref.debug"
 
-# Force the ENTIRE staged tree to root:wheel before makefs records it (makefs
-# bakes in the staging tree's on-disk ownership). Mirrors nextbsd build.sh: the
-# tree is assembled by build steps whose cp/clone/mkdir can leak non-root
-# ownership into the baked image. We run as root, so setuid/setgid bits on
-# already-0:0 files are preserved. Subsumes the old narrow LaunchDaemons chown.
-echo "==> normalising ownership to root:wheel"
-chown -R 0:0 "$ROOTFS"
-
-# The blanket chown above also clobbered the live 'admin' account's home dir to
-# root:wheel. Restore admin ownership so the GUI session can write ~/.Xauthority,
-# ~/GNUstep, etc. Otherwise login AUTHENTICATES (pam login/nullok) but the session
-# can't start and X drops straight back to the greeter -- indistinguishable from a
-# login failure. nextbsd's own build ships no user account, so its blanket chown
-# is safe; ours must re-fix the home it just clobbered. Host-driven + numeric
-# (uid:gid/home read from the rootfs passwd) so it needs no chroot / devfs.
-ADMIN_IDS=$(awk -F: '$1=="admin"{print $3":"$4; exit}' "$ROOTFS/etc/passwd")
-ADMIN_HOME=$(awk -F: '$1=="admin"{print $9; exit}' "$ROOTFS/etc/passwd")
-if [ -n "$ADMIN_IDS" ] && [ -n "$ADMIN_HOME" ] && [ -d "$ROOTFS$ADMIN_HOME" ]; then
-    echo "==> restoring admin home ($ADMIN_HOME) ownership to $ADMIN_IDS"
-    chown -R "$ADMIN_IDS" "$ROOTFS$ADMIN_HOME"
-else
-    echo "    WARN: admin home not found in rootfs passwd; skipping home re-chown"
-fi
+# Normalise ownership of ONLY the launchd overlay we cp'd in from the repo: those
+# plists can carry the build user's uid from the rsync'd workspace. Do NOT
+# blanket-chown the whole rootfs -- that clobbers the DirectoryServices ownership
+# `dscli init` set up (notably /Local/Users/admin -> 5000:5000), which the
+# logged-in session needs to write its home; a root-owned home makes the session
+# fail to start and X drops back to the greeter. Everything else is already
+# root-owned (pkg -r, chroot, and the overlay clones/cp all run as root here).
+echo "==> normalising launchd overlay ownership to root:wheel"
+chown -R 0:0 "$ROOTFS/System/Library/LaunchDaemons"
 
 # ---------------------------------------------------------------------------
 # 8-10. Repackage as a live ISO (nextbsd build.sh step 7 model, verbatim).
