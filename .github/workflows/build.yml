@@ -24,6 +24,7 @@ jobs:
           filters: |
             code:
               - 'build.sh'
+              - 'pkglist.txt'
               - 'overlays/**'
               - 'tools/**'
 

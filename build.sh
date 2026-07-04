@@ -191,7 +191,25 @@ chroot "$ROOTFS" /bin/sh -eu -c '
 [ -d "$ROOTFS/System/Library" ] || { echo "ERROR: /System was not produced" >&2; exit 1; }
 
 # ---------------------------------------------------------------------------
-# 6. Gershwin launchd overlay: loginwindow/dshelper/gdomap + the D-Bus system
+# 6. Bake the runtime prerequisites Gershwin needs but never installs itself —
+#    the XLibre X server + input/video drivers (pkglist.txt). Gershwin's
+#    LoginWindow execs /usr/local/bin/X at boot; its Bootstrap.sh installs only
+#    the X *client* libs, and the NextBSD base no longer bundles a server (it
+#    rebuilt from packages), so the desktop can't start without this. Installed
+#    IN THE CHROOT (devfs + resolv.conf still present from step 5) so each
+#    package's post-install scripts run natively; pkg resolves the full closure
+#    from the FreeBSD repo configured in step 3.
+# ---------------------------------------------------------------------------
+if [ -f "$CWD/pkglist.txt" ]; then
+    EXTRA_PKGS=$(sed -e 's/#.*//' -e '/^[[:space:]]*$/d' "$CWD/pkglist.txt" | tr '\n' ' ')
+    if [ -n "$EXTRA_PKGS" ]; then
+        echo "==> installing pkglist.txt runtime prerequisites: $EXTRA_PKGS"
+        chroot "$ROOTFS" /bin/sh -eu -c "pkg install -y $EXTRA_PKGS"
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+# 7. Gershwin launchd overlay: loginwindow/dshelper/gdomap + the D-Bus system
 #    bus (keep base getty as a rescue console on the other VTs).
 # ---------------------------------------------------------------------------
 echo "==> applying Gershwin launchd overlay (loginwindow alongside getty)"
@@ -248,7 +266,7 @@ echo "==> normalising ownership to root:wheel"
 chown -R 0:0 "$ROOTFS"
 
 # ---------------------------------------------------------------------------
-# 7-9. Repackage as a live ISO (nextbsd build.sh step 7 model, verbatim).
+# 8-10. Repackage as a live ISO (nextbsd build.sh step 7 model, verbatim).
 # ---------------------------------------------------------------------------
 echo "==> live ISO: compact UFS + mkuzip"
 makefs -t ffs -B little -o version=2,label=NBROOT "$WORK/rootfs.iso.ufs" "$ROOTFS"
