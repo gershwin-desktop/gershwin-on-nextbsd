@@ -24,6 +24,7 @@ jobs:
           filters: |
             code:
               - 'build.sh'
+              - 'pkglist.txt'
               - 'overlays/**'
               - 'tools/**'
 
@@ -37,9 +38,18 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Free up host disk (larger VM disk)
+        # This build does MORE than NextBSD's own (pkg install NextBSD-everything
+        # + full src.txz extract + a from-source Gershwin/GNUstep compile), so
+        # free aggressively — mirror nextbsd-redux/nextbsd's free-disk block.
         uses: jlumbroso/free-disk-space@main
         with:
           tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: false
+          docker-images: false
+          swap-storage: false
 
       - name: Build ISO inside FreeBSD VM
         uses: vmactions/freebsd-vm@v1
@@ -51,7 +61,7 @@ jobs:
           cpu: 4
           mem: 8192
           prepare: |
-            pkg install -y jq unzip
+            pkg install -y git
           run: |
             set -e
             export TARGET_ARCH=amd64
@@ -133,8 +143,11 @@ jobs:
           chmod +x tests/loginwindow-test.sh
           ./tests/loginwindow-test.sh
 
-      - name: workspace-test (screenshot desktop)
-        continue-on-error: true
+      # GATING: unlike loginwindow-test (which only injects keystrokes), this
+      # verifies the RESULT — that the session actually reached the desktop — and
+      # fails the job if it didn't. That closes the "CI green while login is
+      # broken" gap: the boot-test alone only proves the greeter painted.
+      - name: workspace-test (verify desktop renders + screenshot)
         run: |
           chmod +x tests/workspace-test.sh
           ./tests/workspace-test.sh
