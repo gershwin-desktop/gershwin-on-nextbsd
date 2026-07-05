@@ -31,3 +31,10 @@ xlibre-xf86-input-synaptics
 xlibre-xf86-input-vmmouse
 xlibre-xf86-video-scfb
 xlibre-xf86-video-vesa
+
+# Mesa DRI drivers (swrast + hardware, e.g. i915/iris) — the GL implementation
+# behind /usr/local/lib/dri/*_dri.so. Gershwin's Bootstrap.sh pulls mesa-libs
+# (libGL/libEGL/libgbm) but mesa-libs does NOT depend on mesa-dri, so without
+# this the X server logs "AIGLX error: dlopen of .../swrast_dri.so failed" and
+# "GLX: no usable GL providers", leaving the desktop with no working OpenGL.
+mesa-dri
