@@ -245,6 +245,15 @@ chroot "$ROOTFS" /bin/sh -c '. /System/Library/Makefiles/GNUstep.sh && dscli ini
 # second 'admin' -- Gershwin owns the user database, so we leave it entirely to
 # dscli (which also sets the correct /Local ownership; we must not disturb it).
 
+# purge the pkg cache before makefs bakes the tree in. All three install phases
+# (NextBSD-everything, Gershwin's Bootstrap.sh deps, pkglist.txt) leave the
+# downloaded package tarballs + metadata under /var/cache/pkg in the rootfs;
+# nothing needs them at runtime, and they otherwise go straight into the
+# compressed image. Run in the chroot (devfs still mounted from step 5) so pkg
+# operates on the rootfs's own db/cache.
+echo "==> pkg clean: purge cached package tarballs from the rootfs"
+chroot "$ROOTFS" /bin/sh -eu -c 'pkg clean -ay' || true
+
 # strip build scratch before makefs bakes the tree in
 rm -rf "$ROOTFS/build" "$ROOTFS/private/etc/resolv.conf"
 umount "$ROOTFS/dev" || true
@@ -270,9 +279,13 @@ chown -R 0:0 "$ROOTFS/System/Library/LaunchDaemons"
 # ---------------------------------------------------------------------------
 # 8-10. Repackage as a live ISO (nextbsd build.sh step 7 model, verbatim).
 # ---------------------------------------------------------------------------
-echo "==> live ISO: compact UFS + mkuzip"
+echo "==> live ISO: compact UFS + mkuzip (zstd)"
 makefs -t ffs -B little -o version=2,label=NBROOT "$WORK/rootfs.iso.ufs" "$ROOTFS"
-mkuzip -o "$WORK/rootfs.uzip" "$WORK/rootfs.iso.ufs"
+# Compress the rootfs with zstd (-A) at level 12 (-C), NOT mkuzip's default zlib.
+# zstd -12 roughly doubles the compression ratio vs zlib on this tree (the whole
+# ISO-size gap vs gershwin-on-freebsd, which uses the same setting) while keeping
+# the fastest on-demand geom_uzip decompression at runtime. -d enables TRIM.
+mkuzip -A zstd -C 12 -d -o "$WORK/rootfs.uzip" "$WORK/rootfs.iso.ufs"
 ls -lh "$WORK/rootfs.uzip"
 
 echo "==> staging mfsroot (rootfs tools + lib closure)"
