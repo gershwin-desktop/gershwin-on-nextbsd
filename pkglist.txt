@@ -18,6 +18,10 @@
 # rootfs during the chroot build; listed here to match nextbsd's former set).
 git
 
+# sudo — so a user on the booted live system can run administrative commands
+# (FreeBSD base ships no sudo).
+sudo
+
 # X11 (XLibre) — the SAME minimal set nextbsd-redux/nextbsd used to bundle
 # (nextbsd commit 1883bd8/a4d344a, dropped in 3564c03 when its base went lean).
 # A minimal X server + laptop/VM input+video drivers so the desktop can start;
