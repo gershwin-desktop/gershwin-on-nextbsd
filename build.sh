@@ -182,8 +182,8 @@ mount -t devfs devfs "$ROOTFS/dev"
 cp /etc/resolv.conf "$ROOTFS/private/etc/resolv.conf"
 chroot "$ROOTFS" /bin/sh -eu -c '
     pkg install -y git
-    git clone --depth 1 -b '"$GERSHWIN_REF"' '"$GERSHWIN_REPO"' /build
-    cd /build
+    git clone --depth 1 -b '"$GERSHWIN_REF"' '"$GERSHWIN_REPO"' /Developer
+    cd /Developer
     sh Library/Scripts/Bootstrap.sh
     sh Library/Scripts/Checkout.sh
     make install
@@ -254,8 +254,13 @@ chroot "$ROOTFS" /bin/sh -c '. /System/Library/Makefiles/GNUstep.sh && dscli ini
 echo "==> pkg clean: purge cached package tarballs from the rootfs"
 chroot "$ROOTFS" /bin/sh -eu -c 'pkg clean -ay' || true
 
-# strip build scratch before makefs bakes the tree in
-rm -rf "$ROOTFS/build" "$ROOTFS/private/etc/resolv.conf"
+# Deliberately KEEP /Developer (the gershwin-developer clone + its checked-out
+# Library/Sources) baked into the rootfs, exactly as gershwin-on-freebsd does:
+# it rides along in rootfs.uzip -> the rofs lower layer, so the live desktop
+# ships with a full on-disk Developer source tree once cow+rofs are unioned as
+# /. It never enters the mfsroot/miniroot (that only copies the fixed tool list
+# above), so single-user boot stays tiny. Only the transient resolv.conf goes.
+rm -rf "$ROOTFS/private/etc/resolv.conf"
 umount "$ROOTFS/dev" || true
 
 # Retire the kld* user CLIs, exactly as nextbsd-redux/nextbsd build.sh does so
