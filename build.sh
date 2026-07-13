@@ -290,28 +290,58 @@ makefs -t ffs -B little -o version=2,label=NBROOT "$WORK/rootfs.iso.ufs" "$ROOTF
 # doubles the ratio vs zlib on this tree while keeping the fastest on-demand
 # geom_uzip decompression at runtime. -d de-duplicates identical clusters.
 #
-# -C 19 -s 131072 (was -C 12 with mkuzip's default 16K cluster). mkuzip compresses
-# every cluster as an INDEPENDENT zstd frame, so at the 16K default the compressor
-# restarts with an empty window every 16 KiB across an 8 GB image and can never
-# reference the identical ELF headers/string tables sitting a few clusters away.
+# mkuzip compresses every cluster as an INDEPENDENT zstd frame, so the cluster size
+# IS the compressor's window: at mkuzip's 16K default it restarts with an empty
+# window every 16 KiB across an 8 GB image and can never reference the identical ELF
+# headers/string tables a few clusters away. Two knobs, and they cost very different
+# amounts: the LEVEL costs CPU, the CLUSTER is nearly free (wider clusters mean fewer
+# of them, so less per-cluster overhead -- it compresses FASTER).
 #
-# Measured on the real rootfs.iso.ufs (each setting run against the actual image;
-# the -C 12/16K row reproduced the shipped uzip to within 0.1%):
+# Measured against the real rootfs.iso.ufs, not modeled (the shipped image was pulled
+# from the published ISO, decompressed back to raw UFS, and each setting re-run on the
+# actual bytes; the then-current setting reproduced the shipped uzip to -0.0%):
 #
-#     -C 12  -s  16K   1.985 GB   (what we shipped)
-#     -C 19  -s  16K   1.953 GB   -1.6%   <- level alone barely moves it
-#     -C 12  -s 128K   1.871 GB   -5.8%   <- cluster alone barely moves it
-#     -C 19  -s 128K   1.761 GB  -11.3%   <- together they compound
-#     -C 19  -s 256K   1.711 GB  -13.8%
+#     -C 19  -s 128K   2.031 GB    --      188s   <- what we shipped before this change
+#     -C 15  -s 128K   2.055 GB   +1.2%     69s   <- LARGER; low level wastes the window
+#     -C 15  -s   1M   2.000 GB   -1.5%     48s   <- fastest, if build time is the goal
+#     -C 19  -s   1M   1.859 GB   -8.4%    155s   <- smaller AND faster than 128K
+#     -A lzma -s  1M   1.745 GB  -14.0%    164s   <- rejected, see below
 #
-# 128K is the stopping point on purpose: geom_uzip must decompress a whole cluster
-# to satisfy any read, so a wider cluster taxes every small file read on the live
-# root. 256K is available for ~50 MB more if we ever need it. The hard ceiling is
-# maxphys (1 MiB) -- see MAX_BLKSZ in sys/geom/uzip/g_uzip.c.
+# So a ~1 MiB cluster is strictly better than the 128K it replaces: ~170 MB smaller and
+# ~3 min faster in CI.
 #
-# Cost: mkuzip is the slow step and -C 19 is ~3.7x the work of -C 12, so this
-# takes the compression step from ~3 min to ~11 min. -S prints the ratio.
-mkuzip -A zstd -C 19 -s 131072 -d -S -o "$WORK/rootfs.uzip" "$WORK/rootfs.iso.ufs"
+# Why 1044480 and not 1048576: there are TWO ceilings and the tighter one is in mkuzip,
+# not the kernel. The kernel caps the *uncompressed* cluster at maxphys (MAX_BLKSZ in
+# sys/geom/uzip/g_uzip.c), which would allow a full 1 MiB. But mkuzip additionally
+# requires the WORST-CASE COMPRESSED cluster to fit in MAXPHYS -- an incompressible
+# cluster grows -- and rejects -s 1048576 outright:
+#
+#     mkuzip: maximal compressed cluster size 1052672 greater than MAXPHYS 1048576
+#
+# The overhead it budgets is one 4 KiB page, so the true maximum is 1048576 - 4096 =
+# 1044480 (a valid multiple of 512). That is within 0.4% of 1 MiB, so it keeps
+# essentially all of the win. Do not "round this up" to 1048576; the build will fail.
+#
+# Read cost: geom_uzip decompresses a whole cluster to satisfy ANY read, so a wider
+# cluster taxes small reads on the live root. Measured over 300 real clusters:
+#
+#     zstd -C 19  128K   1545 MB/s   median 0.08 ms/cluster   p95 0.15 ms
+#     zstd -C 19    1M   1660 MB/s   median 0.62 ms/cluster   p95 1.10 ms
+#     lzma          1M    132 MB/s   median 5.99 ms/cluster   p95 17.68 ms
+#
+# 0.62 ms is an acceptable tax, and zstd's ~1.6 GB/s is ~10x faster than any live
+# medium (USB2 ~30 MB/s, USB3 ~100-300 MB/s), so decompression never bottlenecks boot.
+#
+# lzma IS supported here (geom_uzip decodes it unconditionally; zstd is the one gated
+# behind ZSTDIO) and is ~6% smaller at matched settings -- but it decompresses ~12x
+# slower, at 132 MB/s, which is the same order as the live medium itself, so it would
+# become the boot bottleneck. Note zstd at 1M (0.62 ms) still beats lzma at 128K
+# (0.76 ms): zstd with a wide cluster dominates lzma outright. This is the same trade
+# Ubuntu made when it moved its live squashfs from xz to zstd. Do not "optimise" this
+# back to lzma without re-measuring decompression.
+#
+# -d de-duplicates identical clusters; -S prints the achieved ratio.
+mkuzip -A zstd -C 19 -s 1044480 -d -S -o "$WORK/rootfs.uzip" "$WORK/rootfs.iso.ufs"
 ls -lh "$WORK/rootfs.uzip"
 
 echo "==> staging mfsroot (rootfs tools + lib closure)"
