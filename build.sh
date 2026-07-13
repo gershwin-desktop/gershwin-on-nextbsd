@@ -341,7 +341,7 @@ makefs -t ffs -B little -o version=2,label=NBROOT "$WORK/rootfs.iso.ufs" "$ROOTF
 # back to lzma without re-measuring decompression.
 #
 # -d de-duplicates identical clusters; -S prints the achieved ratio.
-mkuzip -A zstd -C 19 -s 1044480 -d -S -o "$WORK/rootfs.uzip" "$WORK/rootfs.iso.ufs"
+mkuzip -A lzma -C 6 -s 1044480 -d -S -o "$WORK/rootfs.uzip" "$WORK/rootfs.iso.ufs"
 ls -lh "$WORK/rootfs.uzip"
 
 echo "==> staging mfsroot (rootfs tools + lib closure)"
