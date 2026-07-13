@@ -286,11 +286,32 @@ chown -R 0:0 "$ROOTFS/System/Library/LaunchDaemons"
 # ---------------------------------------------------------------------------
 echo "==> live ISO: compact UFS + mkuzip (zstd)"
 makefs -t ffs -B little -o version=2,label=NBROOT "$WORK/rootfs.iso.ufs" "$ROOTFS"
-# Compress the rootfs with zstd (-A) at level 12 (-C), NOT mkuzip's default zlib.
-# zstd -12 roughly doubles the compression ratio vs zlib on this tree (the whole
-# ISO-size gap vs gershwin-on-freebsd, which uses the same setting) while keeping
-# the fastest on-demand geom_uzip decompression at runtime. -d enables TRIM.
-mkuzip -A zstd -C 12 -d -o "$WORK/rootfs.uzip" "$WORK/rootfs.iso.ufs"
+# Compress the rootfs with zstd (-A), NOT mkuzip's default zlib: zstd roughly
+# doubles the ratio vs zlib on this tree while keeping the fastest on-demand
+# geom_uzip decompression at runtime. -d de-duplicates identical clusters.
+#
+# -C 19 -s 131072 (was -C 12 with mkuzip's default 16K cluster). mkuzip compresses
+# every cluster as an INDEPENDENT zstd frame, so at the 16K default the compressor
+# restarts with an empty window every 16 KiB across an 8 GB image and can never
+# reference the identical ELF headers/string tables sitting a few clusters away.
+#
+# Measured on the real rootfs.iso.ufs (each setting run against the actual image;
+# the -C 12/16K row reproduced the shipped uzip to within 0.1%):
+#
+#     -C 12  -s  16K   1.985 GB   (what we shipped)
+#     -C 19  -s  16K   1.953 GB   -1.6%   <- level alone barely moves it
+#     -C 12  -s 128K   1.871 GB   -5.8%   <- cluster alone barely moves it
+#     -C 19  -s 128K   1.761 GB  -11.3%   <- together they compound
+#     -C 19  -s 256K   1.711 GB  -13.8%
+#
+# 128K is the stopping point on purpose: geom_uzip must decompress a whole cluster
+# to satisfy any read, so a wider cluster taxes every small file read on the live
+# root. 256K is available for ~50 MB more if we ever need it. The hard ceiling is
+# maxphys (1 MiB) -- see MAX_BLKSZ in sys/geom/uzip/g_uzip.c.
+#
+# Cost: mkuzip is the slow step and -C 19 is ~3.7x the work of -C 12, so this
+# takes the compression step from ~3 min to ~11 min. -S prints the ratio.
+mkuzip -A zstd -C 19 -s 131072 -d -S -o "$WORK/rootfs.uzip" "$WORK/rootfs.iso.ufs"
 ls -lh "$WORK/rootfs.uzip"
 
 echo "==> staging mfsroot (rootfs tools + lib closure)"
