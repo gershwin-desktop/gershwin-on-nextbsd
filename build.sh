@@ -307,8 +307,20 @@ makefs -t ffs -B little -o version=2,label=NBROOT "$WORK/rootfs.iso.ufs" "$ROOTF
 #     -C 19  -s   1M   1.859 GB   -8.4%    155s   <- smaller AND faster than 128K
 #     -A lzma -s  1M   1.745 GB  -14.0%    164s   <- rejected, see below
 #
-# So -s 1048576 is strictly better than the 128K it replaces: 171 MB smaller and ~3 min
-# faster in CI. 1 MiB is the hard ceiling -- MAX_BLKSZ is maxphys in g_uzip.c.
+# So a ~1 MiB cluster is strictly better than the 128K it replaces: ~170 MB smaller and
+# ~3 min faster in CI.
+#
+# Why 1044480 and not 1048576: there are TWO ceilings and the tighter one is in mkuzip,
+# not the kernel. The kernel caps the *uncompressed* cluster at maxphys (MAX_BLKSZ in
+# sys/geom/uzip/g_uzip.c), which would allow a full 1 MiB. But mkuzip additionally
+# requires the WORST-CASE COMPRESSED cluster to fit in MAXPHYS -- an incompressible
+# cluster grows -- and rejects -s 1048576 outright:
+#
+#     mkuzip: maximal compressed cluster size 1052672 greater than MAXPHYS 1048576
+#
+# The overhead it budgets is one 4 KiB page, so the true maximum is 1048576 - 4096 =
+# 1044480 (a valid multiple of 512). That is within 0.4% of 1 MiB, so it keeps
+# essentially all of the win. Do not "round this up" to 1048576; the build will fail.
 #
 # Read cost: geom_uzip decompresses a whole cluster to satisfy ANY read, so a wider
 # cluster taxes small reads on the live root. Measured over 300 real clusters:
@@ -329,7 +341,7 @@ makefs -t ffs -B little -o version=2,label=NBROOT "$WORK/rootfs.iso.ufs" "$ROOTF
 # back to lzma without re-measuring decompression.
 #
 # -d de-duplicates identical clusters; -S prints the achieved ratio.
-mkuzip -A zstd -C 19 -s 1048576 -d -S -o "$WORK/rootfs.uzip" "$WORK/rootfs.iso.ufs"
+mkuzip -A zstd -C 19 -s 1044480 -d -S -o "$WORK/rootfs.uzip" "$WORK/rootfs.iso.ufs"
 ls -lh "$WORK/rootfs.uzip"
 
 echo "==> staging mfsroot (rootfs tools + lib closure)"
